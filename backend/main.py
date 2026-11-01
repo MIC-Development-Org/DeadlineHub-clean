@@ -1,9 +1,21 @@
+import os
+import json
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
+
 import models, database
+
+# Load environment variables (API Key)
+load_dotenv()
+
+# Initialize Gemini Client
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 models.Base.metadata.create_all(bind=database.engine)
 
@@ -17,6 +29,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- Schemas ---
 class TaskSchema(BaseModel):
     title: str
     category: str = "Academic"
@@ -29,6 +42,10 @@ class TaskSchema(BaseModel):
     class Config:
         from_attributes = True
 
+class PromptSchema(BaseModel):
+    prompt: str
+
+# --- DB Endpoints ---
 @app.get("/api/tasks", response_model=List[TaskSchema])
 def get_tasks(db: Session = Depends(database.get_db)):
     return db.query(models.Task).all()
@@ -40,3 +57,30 @@ def create_task(task: TaskSchema, db: Session = Depends(database.get_db)):
     db.commit()
     db.refresh(db_task)
     return db_task
+
+# --- AI Endpoint ---
+@app.post("/api/ai-parse")
+def parse_task_with_ai(payload: PromptSchema):
+    system_instruction = """
+    You are a task management assistant. Extract the task details from the user's prompt.
+    Return ONLY a JSON object with the following keys:
+    - title (string)
+    - category (string: strictly choose from "Academic", "Club", or "Personal")
+    - priority (string: strictly choose from "High", "Medium", or "Low")
+    - due_date (string: YYYY-MM-DD format, or null if not mentioned)
+    - estimated_hours (integer: guess based on task complexity if not mentioned, default 1)
+    """
+    
+    try:
+        response = client.models.generate_content(
+            model='gemini-3.8-flash',
+            contents=payload.prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                response_mime_type="application/json",
+                temperature=0.1
+            )
+        )
+        return json.loads(response.text)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
