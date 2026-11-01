@@ -83,4 +83,12 @@ def parse_task_with_ai(payload: PromptSchema):
         )
         return json.loads(response.text)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"API Error or High Demand: {e}")
+        # Fallback Mock Data so the frontend team is never blocked
+        return {
+            "title": f"Hardcoded Fallback: {payload.prompt[:20]}...",
+            "category": "Academic",
+            "priority": "High",
+            "due_date": "2026-11-06",
+            "estimated_hours": 2
+        }
