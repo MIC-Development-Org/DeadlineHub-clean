@@ -31,6 +31,7 @@ app.add_middleware(
 
 # --- Schemas ---
 class TaskSchema(BaseModel):
+    id: int
     title: str
     category: str = "Academic"
     priority: str = "Medium"
@@ -57,6 +58,16 @@ def create_task(task: TaskSchema, db: Session = Depends(database.get_db)):
     db.commit()
     db.refresh(db_task)
     return db_task
+# --- task completion ---
+@app.put("/api/tasks/{task_id}")
+def toggle_task_completion(task_id: int, db: Session = Depends(database.get_db)):
+    task = db.query(models.Task).filter(models.Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    task.is_completed = not task.is_completed
+    db.commit()
+    return task
 
 # --- AI Endpoint ---
 @app.post("/api/ai-parse")

@@ -13,7 +13,20 @@ export default function TaskList() {
       .then(data => setTasks(data))
       .catch(err => console.error("Error fetching tasks:", err));
   }, []);
-
+  const toggleTaskCompletion = async (taskId, currentStatus) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/tasks/${taskId}`, {
+        method: 'PUT',
+      });
+      if (res.ok) {
+        setTasks(tasks.map(t => 
+          t.id === taskId ? { ...t, is_completed: !currentStatus } : t
+        ));
+      }
+    } catch (err) {
+      console.error("Failed to update task", err);
+    }
+  };
   const filteredTasks = filter === 'All' ? tasks : tasks.filter(t => t.category === filter);
 
   return (
@@ -44,7 +57,10 @@ export default function TaskList() {
         {filteredTasks.map(task => (
           <div key={task.id} className="flex items-center justify-between rounded-lg border bg-white p-4 shadow-sm transition hover:shadow-md">
             <div className="flex items-center gap-4">
-              <button className="text-gray-400 hover:text-green-600">
+              <button 
+                onClick={() => toggleTaskCompletion(task.id, task.is_completed)}
+                className="text-gray-400 hover:text-green-600 transition"
+              >
                 {task.is_completed ? <CheckCircle className="h-6 w-6 text-green-600" /> : <Circle className="h-6 w-6" />}
               </button>
               <div>
