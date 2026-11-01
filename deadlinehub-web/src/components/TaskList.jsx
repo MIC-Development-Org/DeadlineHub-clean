@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ExternalLink, CheckCircle, Circle, Plus } from 'lucide-react';
-import TaskModal from './TaskModal';
+import TaskModal from '../TaskModal';
 
 export default function TaskList() {
   const [tasks, setTasks] = useState([]);
