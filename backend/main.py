@@ -1,6 +1,8 @@
 import os
 import json
-from fastapi import FastAPI, Depends, HTTPException
+from datetime import datetime, timezone
+from sqlalchemy import func
+from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -15,7 +17,8 @@ import models, database
 load_dotenv()
 
 # Initialize Gemini Client
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+api_key = os.getenv("GEMINI_API_KEY")
+client = genai.Client(api_key=api_key) if api_key else None
 
 models.Base.metadata.create_all(bind=database.engine)
 
@@ -46,6 +49,121 @@ class TaskSchema(BaseModel):
 class PromptSchema(BaseModel):
     prompt: str
 
+
+class StudySessionCreate(BaseModel):
+    user_id: str
+    session_type: str
+    duration_seconds: int
+    started_at: datetime
+    completed_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class StudySessionSchema(StudySessionCreate):
+    id: int
+
+@app.post("/api/study-sessions", response_model=StudySessionSchema)
+def create_study_session(
+    session: StudySessionCreate,
+    db: Session = Depends(database.get_db)
+):
+    if session.duration_seconds <= 0:
+        raise HTTPException(status_code=400, detail="Duration must be positive")
+
+    started_at = session.started_at
+    completed_at = session.completed_at
+
+    # Store timestamps consistently in UTC
+    if started_at.tzinfo:
+        started_at = started_at.astimezone(timezone.utc).replace(tzinfo=None)
+
+    if completed_at.tzinfo:
+        completed_at = completed_at.astimezone(timezone.utc).replace(tzinfo=None)
+
+    db_session = models.StudySession(
+        user_id=session.user_id,
+        session_type=session.session_type,
+        duration_seconds=session.duration_seconds,
+        started_at=started_at,
+        completed_at=completed_at
+    )
+
+    db.add(db_session)
+    db.commit()
+    db.refresh(db_session)
+
+    return db_session
+
+
+@app.get("/api/study-sessions", response_model=List[StudySessionSchema])
+def get_study_sessions(
+    user_id: str,
+    db: Session = Depends(database.get_db)
+):
+    return (
+        db.query(models.StudySession)
+        .filter(models.StudySession.user_id == user_id)
+        .order_by(models.StudySession.completed_at.desc())
+        .all()
+    )
+
+
+
+
+@app.get("/api/study-sessions/monthly")
+def get_monthly_study_stats(
+    user_id: str,
+    year: int,
+    month: int,
+    db: Session = Depends(database.get_db)
+):
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="Month must be between 1 and 12")
+    
+    if year < 2000 or year > 2100:
+        raise HTTPException(status_code=400, detail="Invalid year")
+
+    start_date = datetime(year, month, 1)
+
+    if month == 12:
+        end_date = datetime(year + 1, 1, 1)
+    else:
+        end_date = datetime(year, month + 1, 1)
+
+    daily_stats = (
+        db.query(
+            func.date(models.StudySession.completed_at).label("study_date"),
+            func.sum(models.StudySession.duration_seconds).label("total_seconds"),
+            func.count(models.StudySession.id).label("session_count")
+        )
+        .filter(
+            models.StudySession.user_id == user_id,
+            models.StudySession.completed_at >= start_date,
+            models.StudySession.completed_at < end_date
+        )
+        .group_by(func.date(models.StudySession.completed_at))
+        .order_by(func.date(models.StudySession.completed_at))
+        .all()
+    )
+
+    days = [
+        {
+            "date": str(row.study_date),
+            "total_seconds": row.total_seconds,
+            "session_count": row.session_count
+        }
+        for row in daily_stats
+    ]
+
+    return {
+        "year": year,
+        "month": month,
+        "total_seconds": sum(day["total_seconds"] for day in days),
+        "days_studied": len(days),
+        "daily_stats": days
+    }
 # --- DB Endpoints ---
 @app.get("/api/tasks", response_model=List[TaskSchema])
 def get_tasks(db: Session = Depends(database.get_db)):
@@ -81,7 +199,11 @@ def parse_task_with_ai(payload: PromptSchema):
     - due_date (string: YYYY-MM-DD format, or null if not mentioned)
     - estimated_hours (integer: guess based on task complexity if not mentioned, default 1)
     """
-    
+    if client is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Gemini API key is not configured"
+        )
     try:
         response = client.models.generate_content(
             model='gemini-3.8-flash',

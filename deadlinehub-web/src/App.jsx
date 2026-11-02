@@ -8,6 +8,8 @@ import Timer from './components/Timer';
 function App() {
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('tasks');
+  // Stores completed study sessions
+  const [studySessions, setStudySessions] = useState([]);  
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
@@ -18,6 +20,41 @@ function App() {
     localStorage.removeItem('user');
     setUser(null);
   };
+
+const handleSessionComplete = async (session) => {
+  try {
+    const response = await fetch('http://127.0.0.1:8000/api/study-sessions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        user_id: user,
+        session_type: session.type,
+        duration_seconds: session.durationSeconds,
+        started_at: session.startedAt,
+        completed_at: session.completedAt,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to save study session');
+    }
+
+    const savedSession = await response.json();
+
+    setStudySessions((prev) => [...prev, {
+      ...session,
+      id: savedSession.id,
+    }]);
+
+    console.log('Study session saved successfully:', savedSession);
+
+  } catch (error) {
+    console.error('Error saving study session:', error);
+    alert('Could not save your study session. Please try again.');
+  }
+};
 
   if (!user) {
     return <AuthMock onLogin={setUser} />;
@@ -52,8 +89,12 @@ function App() {
       {/* Main Content Area */}
       <div className="flex-1 overflow-auto">
         {activeTab === 'tasks' && <TaskList />}
-        {activeTab === 'dashboard' && <Dashboard />}
-        {activeTab === 'timer' && <Timer />}
+        {activeTab === 'dashboard' && (
+  <Dashboard studySessions={studySessions} />
+)}
+        {activeTab === 'timer' && (
+  <Timer onSessionComplete={handleSessionComplete} />
+)}
       </div>
     </div>
   );
