@@ -5,7 +5,8 @@ import {
   CheckCircle,
   Circle,
   Plus,
-  Pencil
+  Pencil,
+  Trash2
 } from 'lucide-react';
 import TaskModal from './TaskModal';
 
@@ -23,6 +24,7 @@ export default function TaskList() {
   const [filter, setFilter] = useState('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [taskToEdit, setTaskToEdit] = useState(null);
+  const [confirmAction, setConfirmAction] = useState(null);
 
   // Automatically save tasks whenever they change.
   useEffect(() => {
@@ -38,6 +40,38 @@ export default function TaskList() {
           : task
       )
     );
+  };
+
+  // Request confirmation before deleting an individual task.
+  const deleteTask = (taskId) => {
+    setConfirmAction({
+      type: 'single',
+      taskId
+    });
+  };
+
+  // Request confirmation before clearing all tasks.
+  const clearAllTasks = () => {
+    if (tasks.length === 0) return;
+
+    setConfirmAction({
+      type: 'all'
+    });
+  };
+
+  // Perform the confirmed deletion.
+  const handleConfirmDelete = () => {
+    if (confirmAction?.type === 'single') {
+      setTasks(previous =>
+        previous.filter(task => task.id !== confirmAction.taskId)
+      );
+    }
+
+    if (confirmAction?.type === 'all') {
+      setTasks([]);
+    }
+
+    setConfirmAction(null);
   };
 
   // Open modal for creating a task.
@@ -75,38 +109,37 @@ export default function TaskList() {
     setTaskToEdit(null);
   };
 
-  // Filter tasks by category.
+  // Sort by priority, then earliest due date.
   const priorityOrder = {
-  High: 1,
-  Medium: 2,
-  Low: 3
-};
+    High: 1,
+    Medium: 2,
+    Low: 3
+  };
 
-const filteredTasks = (
-  filter === 'All'
-    ? tasks
-    : tasks.filter(task => task.category === filter)
-).slice().sort((a, b) => {
-  // First, sort by priority
-  const priorityDifference =
-    (priorityOrder[a.priority] || 4) -
-    (priorityOrder[b.priority] || 4);
+  const filteredTasks = (
+    filter === 'All'
+      ? tasks
+      : tasks.filter(task => task.category === filter)
+  ).slice().sort((a, b) => {
+    const priorityDifference =
+      (priorityOrder[a.priority] || 4) -
+      (priorityOrder[b.priority] || 4);
 
-  if (priorityDifference !== 0) {
-    return priorityDifference;
-  }
+    if (priorityDifference !== 0) {
+      return priorityDifference;
+    }
 
-  // Within the same priority, sort by earliest due date
-  if (!a.due_date) return 1;
-  if (!b.due_date) return -1;
+    if (!a.due_date) return 1;
+    if (!b.due_date) return -1;
 
-  return new Date(a.due_date) - new Date(b.due_date);
-});
+    return new Date(a.due_date) - new Date(b.due_date);
+  });
+
   return (
     <div className="mx-auto max-w-4xl p-6">
 
       {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">
             My Tasks
@@ -116,13 +149,23 @@ const filteredTasks = (
           </p>
         </div>
 
-        <button
-          onClick={openAddModal}
-          className="flex items-center gap-2 rounded-lg bg-[#493bb0] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#392d91]"
-        >
-          <Plus className="h-5 w-5" />
-          Add Task
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={clearAllTasks}
+            disabled={tasks.length === 0}
+            className="rounded-lg border border-red-200 px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Clear All Tasks
+          </button>
+
+          <button
+            onClick={openAddModal}
+            className="flex items-center gap-2 rounded-lg bg-[#493bb0] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#392d91]"
+          >
+            <Plus className="h-5 w-5" />
+            Add Task
+          </button>
+        </div>
       </div>
 
       {/* Category Filters */}
@@ -199,9 +242,9 @@ const filteredTasks = (
 
                   {task.due_date && (
                     <span className="rounded-md bg-purple-50 px-2 py-1 text-purple-700">
-                      Due: {task.due_date
-  ? new Date(`${task.due_date}T00:00:00`).toLocaleDateString('en-GB')
-  : 'No due date'}
+                      Due: {new Date(
+                        `${task.due_date}T00:00:00`
+                      ).toLocaleDateString('en-GB')}
                     </span>
                   )}
 
@@ -221,6 +264,15 @@ const filteredTasks = (
                 title="Edit task"
               >
                 <Pencil className="h-4 w-4" />
+              </button>
+
+              <button
+                onClick={() => deleteTask(task.id)}
+                className="rounded-lg p-2 text-gray-400 transition hover:bg-red-50 hover:text-red-600"
+                aria-label={`Delete ${task.title}`}
+                title="Delete task"
+              >
+                <Trash2 className="h-4 w-4" />
               </button>
 
               {task.submission_link && (
@@ -250,6 +302,62 @@ const filteredTasks = (
           </div>
         )}
       </div>
+
+      {/* Custom Delete Confirmation Popup */}
+      {confirmAction && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setConfirmAction(null);
+            }
+          }}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-dialog-title"
+            className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"
+          >
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-red-100">
+              <Trash2 className="h-6 w-6 text-red-600" />
+            </div>
+
+            <h3
+              id="delete-dialog-title"
+              className="text-xl font-bold text-gray-800"
+            >
+              {confirmAction.type === 'all'
+                ? 'Clear All Tasks?'
+                : 'Delete Task?'}
+            </h3>
+
+            <p className="mt-2 text-sm leading-relaxed text-gray-500">
+              {confirmAction.type === 'all'
+                ? 'Are you sure you want to delete all your tasks? This action cannot be undone.'
+                : 'Are you sure you want to delete this task? This action cannot be undone.'}
+            </p>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setConfirmAction(null)}
+                className="rounded-lg px-4 py-2.5 text-sm font-semibold text-gray-600 transition hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={handleConfirmDelete}
+                className="rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
+              >
+                {confirmAction.type === 'all'
+                  ? 'Clear All'
+                  : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create / Edit Modal */}
       <TaskModal
