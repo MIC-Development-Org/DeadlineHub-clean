@@ -1,3 +1,6 @@
+import ProductivityHeatmap from './ProductivityHeatmap';
+import ProductivityStats from './productivitystats';
+import DeadlineCalendar from './Calendar';
 import { useState, useEffect } from 'react';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
@@ -16,7 +19,7 @@ export default function Dashboard() {
   const completedTasks = tasks.filter(t => t.is_completed).length;
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
+    <div className="w-full max-w-none p-8 lg:p-10">
       <h2 className="mb-6 text-2xl font-bold text-gray-800">Dashboard</h2>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -33,19 +36,11 @@ export default function Dashboard() {
           <p className="mt-2 text-3xl font-bold text-blue-600">{totalHours}h</p>
         </div>
       </div>
+      <ProductivityStats tasks={tasks} />
 
-      <div className="rounded-lg bg-white p-6 shadow-sm border flex justify-center">
-        <div>
-          <h3 className="mb-4 text-center text-lg font-semibold">Upcoming Deadlines</h3>
-          <Calendar 
-            className="rounded-lg border-none shadow-sm p-4"
-            tileClassName={({ date }) => {
-              const dateStr = date.toISOString().split('T')[0];
-              return tasks.some(t => t.due_date === dateStr) ? 'bg-red-100 text-red-700 font-bold rounded-full' : null;
-            }}
-          />
-        </div>
-      </div>
+      <ProductivityHeatmap completionByDate={{}} />
+
+      <DeadlineCalendar tasks={tasks} />
     </div>
   );
 }
